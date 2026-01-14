@@ -19,7 +19,7 @@ function App() {
     return () => clearInterval(timer);
   }, []);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['products'],
     queryFn: async () => {
       const res = await axios.get('https://dummyjson.com/products');
@@ -30,7 +30,7 @@ function App() {
   const categories = useMemo(() => ['All', ...new Set(data?.map(p => p.category) || [])], [data]);
 
   const stats = useMemo(() => {
-    if (!data) return { total: 0, val: 0, low: 0, avgRating: 0 };
+    if (!data) return { total: 0, val: "0", low: 0, avgRating: "0" };
     const total = data.length;
     const val = data.reduce((a, b) => a + b.price, 0);
     const low = data.filter(p => p.stock < 15).length;
@@ -38,11 +38,28 @@ function App() {
     return { total, val: val.toLocaleString(), low, avgRating };
   }, [data]);
 
+  // LOGIKA FILTER DENGAN SAFETY GUARD (UNTUK MENCEGAH WHITE SCREEN)
   const filteredData = useMemo(() => {
-    let filtered = data || [];
-    if (activeTab !== 'All') filtered = filtered.filter(p => p.category === activeTab);
-    if (search) filtered = filtered.filter(p => p.title.toLowerCase().includes(search.toLowerCase()) || p.brand.toLowerCase().includes(search.toLowerCase()));
-    return filtered;
+    if (!data) return [];
+    
+    let result = [...data];
+    
+    // Filter Kategori
+    if (activeTab !== 'All') {
+      result = result.filter(p => p?.category === activeTab);
+    }
+    
+    // Filter Search dengan Optional Chaining agar tidak crash jika data null
+    if (search.trim() !== '') {
+      const term = search.toLowerCase();
+      result = result.filter(p => {
+        const titleMatch = p?.title?.toLowerCase()?.includes(term) ?? false;
+        const brandMatch = p?.brand?.toLowerCase()?.includes(term) ?? false;
+        return titleMatch || brandMatch;
+      });
+    }
+    
+    return result;
   }, [data, search, activeTab]);
 
   const columns = [
@@ -66,7 +83,7 @@ function App() {
     columnHelper.accessor('stock', {
       header: 'Inventory Health',
       cell: info => {
-        const val = info.getValue();
+        const val = info.getValue() ?? 0;
         const isLow = val < 15;
         const color = isLow ? '#F56565' : '#48BB78';
         return (
@@ -76,7 +93,7 @@ function App() {
               <span style={{ fontSize: '12px', fontWeight: '800', color: '#4A5568' }}>{val} Units</span>
             </div>
             <div style={{ height: '8px', background: '#EDF2F7', borderRadius: '10px', overflow: 'hidden' }}>
-              <div style={{ width: `${Math.min(val, 100)}%`, height: '100%', background: color, borderRadius: '10px', boxShadow: isLow ? '0 0 12px #F56565' : 'none', transition: 'width 1s cubic-bezier(0.4, 0, 0.2, 1)' }}></div>
+              <div style={{ width: `${Math.min(val, 100)}%`, height: '100%', background: color, borderRadius: '10px', transition: 'width 1s ease' }}></div>
             </div>
           </div>
         );
@@ -84,7 +101,7 @@ function App() {
     }),
     columnHelper.accessor('price', { 
       header: 'Market Price',
-      cell: info => <div style={{ fontSize: '20px', fontWeight: '900', color: '#2D3748', display: 'flex', alignItems: 'baseline', gap: '2px' }}><span style={{ fontSize: '12px', color: '#A0AEC0' }}>$</span>{info.getValue()}</div>
+      cell: info => <div style={{ fontSize: '20px', fontWeight: '900', color: '#2D3748' }}><span style={{ fontSize: '12px', color: '#A0AEC0' }}>$</span>{info.getValue()}</div>
     }),
   ];
 
@@ -93,11 +110,12 @@ function App() {
   });
 
   if (isLoading) return <div style={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#0F172A', color: '#38BDF8', fontWeight: '900', letterSpacing: '4px' }}>BOOTING NEXUS CORE...</div>;
+  if (isError) return <div style={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', color: 'red' }}>SYSTEM ERROR: DATA FETCH FAILED</div>;
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', background: '#F8FAFC', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <div style={{ minHeight: '100vh', display: 'flex', background: '#F8FAFC', fontFamily: "system-ui, sans-serif" }}>
       
-      {/* SIDEBAR NAVIGATION */}
+      {/* SIDEBAR */}
       <div style={{ width: '280px', background: '#1E293B', padding: '40px 20px', display: 'flex', flexDirection: 'column', color: 'white' }}>
         <div style={{ marginBottom: '50px', display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ width: '40px', height: '40px', background: 'linear-gradient(45deg, #3B82F6, #8B5CF6)', borderRadius: '12px' }}></div>
@@ -105,30 +123,21 @@ function App() {
         </div>
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {['Dashboard', 'Inventory', 'Analytics', 'Settings'].map((item, i) => (
-            <div key={item} style={{ padding: '14px 20px', borderRadius: '12px', background: i === 1 ? '#334155' : 'transparent', fontWeight: '700', fontSize: '14px', cursor: 'pointer', color: i === 1 ? '#38BDF8' : '#94A3B8' }}>{item}</div>
+            <div key={item} style={{ padding: '14px 20px', borderRadius: '12px', background: i === 1 ? '#334155' : 'transparent', fontWeight: '700', cursor: 'pointer', color: i === 1 ? '#38BDF8' : '#94A3B8' }}>{item}</div>
           ))}
         </nav>
-        <div style={{ marginTop: 'auto', background: '#334155', padding: '20px', borderRadius: '20px', textAlign: 'center' }}>
-          <p style={{ fontSize: '11px', color: '#94A3B8', margin: '0 0 10px 0' }}>SYSTEM STATUS</p>
-          <div style={{ fontSize: '14px', fontWeight: '900', color: '#4ADE80' }}>● ONLINE</div>
-        </div>
       </div>
 
-      {/* MAIN CONTENT AREA */}
+      {/* MAIN CONTENT */}
       <div style={{ flex: 1, padding: '40px', overflowY: 'auto', height: '100vh' }}>
-        
-        {/* TOP BAR */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px' }}>
           <div>
             <h1 style={{ margin: 0, fontSize: '28px', fontWeight: '900', color: '#0F172A' }}>Inventory Intelligence</h1>
-            <p style={{ margin: '5px 0 0', color: '#64748B', fontWeight: '600' }}>Manage assets and monitor real-time stock health.</p>
+            <p style={{ margin: '5px 0 0', color: '#64748B' }}>Manage assets and monitor real-time stock health.</p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontWeight: '900', color: '#1E293B' }}>{time}</div>
-              <div style={{ fontSize: '12px', color: '#64748B' }}>14 Jan 2026 • Bojongsoang</div>
-            </div>
-            <div style={{ width: '45px', height: '45px', borderRadius: '50%', background: '#E2E8F0', border: '2px solid #CBD5E0' }}></div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontWeight: '900', color: '#1E293B' }}>{time}</div>
+            <div style={{ fontSize: '12px', color: '#64748B' }}>14 Jan 2026 • Bojongsoang</div>
           </div>
         </div>
 
@@ -140,39 +149,41 @@ function App() {
             { label: 'Global Rating', val: stats.avgRating, color: '#F59E0B', icon: '⭐' },
             { label: 'Active SKUs', val: stats.total, color: '#10B981', icon: '📦' }
           ].map((s, i) => (
-            <div key={i} style={{ background: 'white', padding: '25px', borderRadius: '24px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)', border: '1px solid #E2E8F0' }}>
-              <div style={{ fontSize: '24px', marginBottom: '15px' }}>{s.icon}</div>
-              <div style={{ fontSize: '11px', fontWeight: '800', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '1px' }}>{s.label}</div>
-              <div style={{ fontSize: '28px', fontWeight: '900', color: '#1E293B', marginTop: '5px' }}>{s.val}</div>
+            <div key={i} style={{ background: 'white', padding: '25px', borderRadius: '24px', border: '1px solid #E2E8F0' }}>
+              <div style={{ fontSize: '24px', marginBottom: '10px' }}>{s.icon}</div>
+              <div style={{ fontSize: '11px', fontWeight: '800', color: '#94A3B8' }}>{s.label}</div>
+              <div style={{ fontSize: '28px', fontWeight: '900', color: '#1E293B' }}>{s.val}</div>
             </div>
           ))}
         </div>
 
         {/* DATA TABLE SECTION */}
-        <div style={{ background: 'white', borderRadius: '32px', border: '1px solid #E2E8F0', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
-          
-          {/* SEARCH & FILTER HEADER */}
-          <div style={{ padding: '30px', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
-            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', maxWidth: '500px' }}>
+        <div style={{ background: 'white', borderRadius: '32px', border: '1px solid #E2E8F0', overflow: 'hidden' }}>
+          <div style={{ padding: '30px', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', gap: '20px' }}>
+            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto' }}>
               {categories.map(cat => (
-                <button key={cat} onClick={() => setActiveTab(cat)} style={{ padding: '8px 16px', borderRadius: '10px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: '800', transition: '0.3s', background: activeTab === cat ? '#1E293B' : '#F1F5F9', color: activeTab === cat ? 'white' : '#64748B' }}>{cat.toUpperCase()}</button>
+                <button key={cat} onClick={() => setActiveTab(cat)} style={{ padding: '8px 16px', borderRadius: '10px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: '800', background: activeTab === cat ? '#1E293B' : '#F1F5F9', color: activeTab === cat ? 'white' : '#64748B' }}>{cat.toUpperCase()}</button>
               ))}
             </div>
-            <input placeholder="Search products, brands..." value={search} onChange={e => setSearch(e.target.value)} style={{ padding: '12px 20px', width: '280px', borderRadius: '14px', border: '1.5px solid #F1F5F9', background: '#F8FAFC', outline: 'none', fontSize: '14px' }} />
+            <input 
+              placeholder="Search products, brands..." 
+              value={search} 
+              onChange={e => setSearch(e.target.value)} 
+              style={{ padding: '12px 20px', width: '280px', borderRadius: '14px', border: '1.5px solid #F1F5F9', background: '#F8FAFC' }} 
+            />
           </div>
 
-          {/* TABLE CONTENT */}
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#F8FAFC' }}>
                 {table.getHeaderGroups().map(hg => hg.headers.map(header => (
-                  <th key={header.id} style={{ padding: '20px 30px', textAlign: 'left', fontSize: '11px', fontWeight: '900', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '1.5px' }}>{flexRender(header.column.columnDef.header, header.getContext())}</th>
+                  <th key={header.id} style={{ padding: '20px 30px', textAlign: 'left', fontSize: '11px', fontWeight: '900', color: '#94A3B8', textTransform: 'uppercase' }}>{flexRender(header.column.columnDef.header, header.getContext())}</th>
                 )))}
               </tr>
             </thead>
             <tbody>
               {table.getRowModel().rows.map(row => (
-                <tr key={row.id} className="row-hover" style={{ borderBottom: '1px solid #F1F5F9', transition: '0.2s' }}>
+                <tr key={row.id} style={{ borderBottom: '1px solid #F1F5F9' }}>
                   {row.getVisibleCells().map(cell => (
                     <td key={cell.id} style={{ padding: '22px 30px' }}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
                   ))}
@@ -181,18 +192,17 @@ function App() {
             </tbody>
           </table>
 
-          {/* FOOTER PAGINATION */}
           <div style={{ padding: '25px 30px', background: '#F8FAFC', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '13px', fontWeight: '700', color: '#94A3B8' }}>RESULT: <span style={{ color: '#0F172A' }}>{filteredData.length} PRODUCTS</span></span>
+            <span style={{ fontSize: '13px', fontWeight: '700', color: '#94A3B8' }}>TOTAL: {filteredData.length} ITEMS</span>
             <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} style={{ background: 'white', border: '1.5px solid #E2E8F0', padding: '10px 20px', borderRadius: '12px', fontWeight: '800', cursor: 'pointer', fontSize: '13px' }}>PREV</button>
-              <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} style={{ background: '#0F172A', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: '800', cursor: 'pointer', fontSize: '13px' }}>NEXT PAGE</button>
+              <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} style={{ background: 'white', border: '1px solid #E2E8F0', padding: '8px 16px', borderRadius: '10px', cursor: 'pointer' }}>PREV</button>
+              <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} style={{ background: '#0F172A', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '10px', cursor: 'pointer' }}>NEXT</button>
             </div>
           </div>
         </div>
       </div>
-      <style>{`.row-hover:hover { background: #F8FAFC; cursor: pointer; transform: scale(1.001); }`}</style>
     </div>
   );
 }
+
 export default App;
